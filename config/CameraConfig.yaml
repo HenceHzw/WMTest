@@ -1,0 +1,25 @@
+%YAML:1.0
+---
+cam_index: 0
+enable_auto_exp: 0
+energy_exp_time: 3000.
+armor_exp_time: 1500.
+r_balance: 3600
+g_balance: 1024
+b_balance: 1957
+enable_auto_gain: 0
+gain: 1.6899999618530273e+01
+gamma_value: 6.9999998807907104e-01
+trigger_activation: 0
+frame_rate: 180.
+enable_trigger: 0
+trigger_source: 0
+cx: 6.9779093209999996e+02
+cy: 5.5951459590000002e+02
+fx: 2.3496419480000000e+03
+fy: 2.3512263260000000e+03
+k1: -4.1595291261727001e-02
+k2: 9.0691694332708003e-02
+k3: 0.
+p1: 0.
+p2: 0.

@@ -1,0 +1,13 @@
+# cmake
+build
+
+# vscode
+.vscode/*
+.cache/*
+# log
+log
+MvSdkLog
+
+# macos
+.DS_Store
+*.cmake

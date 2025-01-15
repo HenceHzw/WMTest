@@ -1,0 +1,8 @@
+%YAML:1.0
+---
+# video: "/home/hence/视频/Enger_blue.mp4.MP4"
+video: "/media/hence/Data/AboutLearning/RM/WM_2025/DX_aimbot/test.MP4"
+
+# output: "/home//视频"
+output: "/media/hence/Data/AboutLearning/RM/WM_2025/DX_aimbot/output"
+num: 1
