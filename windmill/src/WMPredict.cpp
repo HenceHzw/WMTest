@@ -65,10 +65,16 @@ int WMIPredict::StartPredict(Translator &translator, GlobalParam &gp, WMIdentify
 
     if (WMI.getListStat() == 0)
     {
-        LOG_IF(INFO, gp.switch_INFO) << "识别失败，不预测";
+        LOG_IF(INFO, gp.switch_INFO) << "识别失败 或者 数据不足，不预测";
         return 0;
     }
-    this->UpdateData(WMI.getDirection(), WMI.getRadius(), WMI.getR_center(), WMI.getImg0(), WMI.getData_img(), translator);
+    else
+    {
+        LOG_IF(INFO, gp.switch_INFO) << "识别成功，开始预测";
+    }
+
+    this->UpdateData(WMI, translator); 
+
     // 如果击打大符
     if (translator.message.status % 5 == 3)
     {
@@ -106,16 +112,23 @@ int WMIPredict::StartPredict(Translator &translator, GlobalParam &gp, WMIdentify
  * @param {Translator} translator
  * @return {*}
  */
-void WMIPredict::UpdateData(double direction, double Radius, cv::Point2d R_center, cv::Mat debugImg, cv::Mat data_img, Translator translator)
+void WMIPredict::UpdateData(WMIdentify &WMI, Translator translator)
 {
     this->w = abs(direction) > 20 ? 1.047197551 : 0; // 小符角速度
     // this->w = 0;
-    this->direction = direction > 0 ? 1 : -1;
-    this->R_center = R_center;
-    this->Radius = Radius;
+    this->direction = WMI.getDirection() > 0 ? 1 : -1;
+    // if(1) //这两个参数只是为了直观显示预测打击点位置用的
+    // {
+    //     this->R_center = WMI.getR_center();
+    //     this->Radius = WMI.getRadius();
+    // }
+
+    this->rvec = WMI.getRvec();
+    this->tvec = WMI.getTvec();
+
     this->now_time = (double)translator.message.predict_time / 1000;
-    this->debugImg = debugImg;
-    this->data_img = data_img;
+    this->debugImg = WMI.getImg0();
+    this->data_img = WMI.getData_img();
 }
 
 /**
@@ -228,8 +241,6 @@ void WMIPredict::NewtonDspBig(double theta_0, double alpha, Translator &translat
     LOG_IF(INFO, gp.switch_INFO) << " " << delta_t << "s后要调整的pitch: " << translator.message.pitch;
     LOG_IF(INFO, gp.switch_INFO) << " 开火时待打击点角度： " << 180 / pi * theta_0;
     LOG_IF(INFO, gp.switch_INFO) << " 对应的子弹飞行时间 " << fly_t0;
-    LOG_IF(INFO, gp.switch_INFO) << " " << delta_t << "s后要调整的相对R的yaw: " << 180 / pi * yaw;
-    LOG_IF(INFO, gp.switch_INFO) << " " << delta_t << "s后要调整的pitch: " << translator.message.pitch;
 }
 /**
  * @description: 输入w后，进行P参数的最优估计
@@ -425,10 +436,27 @@ double WMIPredict::ThetaToolForBig(double dt, double t0) // 计算t0->t0+dt的�
 {
     return this->direction * (this->b * dt + this->A0 / this->w_big * (cos(this->w_big * t0 + this->fai) - cos(this->w_big * (t0 + dt) + this->fai)));
 }
-cv::Point2d WMIPredict::CalPointGuess(double theta)
+cv::Point3f WMIPredict::CalPointGuess(double theta, GlobalParam gp)    // 似乎没什么用 
 {
-    // 注意opencv坐标系
-    cv::Point2d point_guess(R_center.x + Radius * cos(theta), R_center.y - Radius * sin((theta)));
+    // // 注意opencv坐标系
+    cv::Point3f point_guess(r * cos(theta), - r * sin((theta)), 0);
+    // cv::Mat rotation_matrix;
+    // cv::Rodrigues(this->rvec, rotation_matrix);
+    // cv::Mat camera_matrix = gp.camera_matrix;
+    // cv::Mat dist_coeffs = gp.dist_coeffs;
+    
+
+
+
+
+    // cv::Mat PointGuessFrame = GetDebugImg();
+    // cv::circle(PointGuessFrame, point_guess, 5, cv::Scalar(0, 0, 255), -1);
+    // cv::imshow("PointGuessFrame", PointGuessFrame);
+
+
+
+
+
     return point_guess;
 }
 

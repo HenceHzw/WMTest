@@ -142,7 +142,7 @@ void WMIdentify::identifyWM(cv::Mat &input_img, Translator &ts) {
 
   WMBlade blade;
   DetectionResult result;
-  result = detect(this->img, true, false, blade);
+  result = detect(this->img, true, true, blade);
   // cv::imshow("Processed Image", result.processedImage);
   cv::waitKey(1);
 
@@ -182,7 +182,7 @@ void WMIdentify::identifyWM(cv::Mat &input_img, Translator &ts) {
     // 那么收集角度
     if (pnp_solved) {
        image_points.clear();
-      // image_points.push_back(blade.apex[0]);
+      // image_points.push_back(blade.apex[0]);     // blade.apex[0] ： R点
       // image_points.push_back(blade.apex[1]);
       image_points.push_back(blade.apex[2]);
       image_points.push_back(blade.apex[3]);
@@ -197,19 +197,23 @@ void WMIdentify::identifyWM(cv::Mat &input_img, Translator &ts) {
       // cv::Rodrigues(rvec, R_init);
       // t_init = tvec.clone();
       this->calculateAngle(blade.apex[1], rotation_matrix, tvec);
-      cv::circle(result.processedImage, blade.apex[1], 5, cv::Scalar(0, 0, 255), -1);
-      // cv::imshow("Processed Image", result.processedImage);
-      if (angle_velocity_list.size() >= gp->list_size - 2) {
+
+      // this->update_R_and_blade_tip_list(blade.apex[0], blade.apex[1]);   // 只是用于打击点预测直观显示，对应于WMIPredict.cpp里面的Updatedate，以及CalPointGuess()函数的调用
+
+      // cv::circle(result.processedImage, blade.apex[1], 5, cv::Scalar(255, 255, 255), -1);  //blade.apex[1]:圆的中心点
+      // cv::imshow("Test Image", result.processedImage);
+      if (angle_list.size() >= gp->list_size - 2) {
         // 如果角度收集达到阈值，那么需要开始预测了，要给Predict发alpha和phi角度，以及距离s
         // 以扇叶方向为x轴建立随动世界系，做PnP算两个角度和距离
 
         // 图像坐标系中的点（世界系下的点是相对固定的，所以不必重新构建world_points了）
         image_points.clear();
-        image_points.push_back(blade.apex[0]);
-        image_points.push_back(blade.apex[1]);
+        // image_points.push_back(blade.apex[0]);
+        // image_points.push_back(blade.apex[1]);
         image_points.push_back(blade.apex[2]);
         image_points.push_back(blade.apex[3]);
         image_points.push_back(blade.apex[4]);
+        image_points.push_back(blade.apex[5]);
 
         // 进行PnP解算获取旋转矩阵
         cv::solvePnP(world_points, image_points, camera_matrix, dist_coeffs,
@@ -223,14 +227,19 @@ void WMIdentify::identifyWM(cv::Mat &input_img, Translator &ts) {
             this->calculateAlpha(rotation_matrix_for_predict, tvec_for_predict);
         this->s = sqrt(cv::norm(tvec_for_predict) * cv::norm(tvec_for_predict) -
                        this->gp->H_0 * this->gp->H_0);
-        // this->updateList((double)ts.message.predict_time / 1000);
+        LOG_IF(INFO, this->switch_INFO) <<"phi = "<<phi;
+        LOG_IF(INFO, this->switch_INFO) <<"alpha = "<<alpha * 180/CV_PI;
+
+        this->list_stat = 1;
       } else {
 
         // 如果角度收集未达到阈值，则不执行updateList
         // LOG_IF(ERROR, this->switch_ERROR)
         //     << "didn't execute updateList, lack data";
       }
-    } else {
+      this->updateList((double)ts.message.predict_time / 1000);
+    } 
+    else {
       // 如果未解算过PnP，则不执行updateList
       // LOG_IF(ERROR, this->switch_ERROR)
       //     << "The PnP coordinate system has not been established yet, "
@@ -240,30 +249,28 @@ void WMIdentify::identifyWM(cv::Mat &input_img, Translator &ts) {
 }
 
 /**
- * @brief 更新R中心点列表（弃用）
+ * @brief 更新R中心点列表
  * @return bool true:成功，false:失败
  */
-bool WMIdentify::update_R_list() {
-  this->preprocess();
-  this->getContours();
+bool WMIdentify::update_R_and_blade_tip_list(cv::Point2f R_center, cv::Point2f blade_tip) {
 
-  // 通过图像特征寻找R
-  this->getValidR();
-  this->selectR();
 
   // 更新R中心点列表
   if (this->R_center_list.size() >= 2) {
     this->R_center_list.pop_front();
   }
-
-  if (this->R_idx.size() > 0 && this->R_contours.size() > 0) {
-    this->R_center_list.emplace_back(
-        cv::minAreaRect(this->R_contours[this->R_idx[0]]).center);
-  } else {
-    // LOG_IF(ERROR, this->switch_ERROR)
-    //     << "failed to emplace_back R_center_list, lack data";
-    return -1; // return 0;
+  if (ready_to_update) {
+    this->R_center_list.emplace_back(cv::Point2d(R_center.x,R_center.y));
   }
+
+  //更新blade_tip列表，即符的圆中心
+  if (this->blade_tip_list.size() >= 2) {
+    this->blade_tip_list.pop_front();
+  }
+  if (ready_to_update) {
+    this->blade_tip_list.emplace_back(cv::Point2d(blade_tip.x,blade_tip.y));
+  }
+
   return 0;
 }
 /**
@@ -296,12 +303,21 @@ void WMIdentify::calculateAngle(cv::Point2f blade_tip, cv::Mat rotation_matrix,
       camera_in_world.at<double>(0, 0) + s * direction_world.at<double>(0, 0);
   double Y =
       camera_in_world.at<double>(1, 0) + s * direction_world.at<double>(1, 0);
-
+      
   this->angle = atan2(Y, X);
-  std::cout << "angle: " << this->angle << std::endl;
-  std::cout << "length: " << sqrt(X * X + Y * Y) << std::endl;
-  std::cout << "X: " << X << std::endl;
-  std::cout << "Y: " << Y << std::endl;
+ 
+  
+  // std::cout << "this->gp->list_size : " << this->gp->list_size << std::endl;    // list_size = 120
+  // std::cout << "gp->gap % gp->gap_control : " << gp->gap % gp->gap_control << std::endl;
+
+  // std::cout << "angle_list.size() : " << this->angle_list.size() << std::endl;
+  LOG_IF(INFO, this->switch_INFO) << "angle: " << this->angle;
+  LOG_IF(INFO, this->switch_INFO) << "length: " << sqrt(X * X + Y * Y);
+
+  // std::cout << "length: " << sqrt(X * X + Y * Y) << std::endl;
+
+  // std::cout << "X: " << X << std::endl;
+  // std::cout << "Y: " << Y << std::endl;
 }
 /**
  * @brief 计算phi
@@ -320,6 +336,7 @@ double WMIdentify::calculatePhi(cv::Mat rotation_matrix, cv::Mat tvec) {
   // phi的值为二者点积除以二者模的乘积
   double phi = acos(
       Vx * Zx + Vz * Zz / (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz)));
+  LOG_IF(INFO, this->switch_INFO) <<"(sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz)) = "<< (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz));
   return phi;
 }
 /**
@@ -692,7 +709,7 @@ void WMIdentify::updateList(double time) {
   // 更新角度队列
   if (this->angle_list.size() >= this->gp->list_size &&
       gp->gap % gp->gap_control == 0) {
-    this->angle_list.pop_front();
+      this->angle_list.pop_front();
   }
   if (ready_to_update && gp->gap % gp->gap_control == 0) {
     this->angle_list.push_back(angle);
@@ -794,9 +811,11 @@ cv::Point2d WMIdentify::getR_center() {
  * @return double 半径值
  */
 double WMIdentify::getRadius() {
-  return sqrt(
-      calculateDistanceSquare(this->R_center_list[R_center_list.size() - 1],
-                              this->blade_tip_list[blade_tip_list.size() - 1]));
+
+  LOG_IF(INFO, this->switch_INFO == ON) << "R_center_list.size() : " << this->R_center_list.size();
+  LOG_IF(INFO, this->switch_INFO == ON) << "blade_tip_list.size() : " << this->blade_tip_list.size();
+
+  return sqrt(calculateDistanceSquare(this->R_center_list[R_center_list.size() - 1], this->blade_tip_list[blade_tip_list.size() - 1]));
 }
 
 double WMIdentify::getPhi() { return this->phi; }
@@ -853,5 +872,17 @@ void WMIdentify::JudgeClear(Translator translator) {
  * @return double 距离平方
  */
 double WMIdentify::calculateDistanceSquare(cv::Point2f p1, cv::Point2f p2) {
+  LOG_IF(INFO, this->switch_INFO == ON) << "calculateDistanceSquare";
+
   return (p1.x - p2.x) * (p1.x - p2.x) + (p1.y - p2.y) * (p1.y - p2.y);
+}
+
+cv::Mat WMIdentify::getRvec()
+{
+  return this->rvec;
+}
+
+cv::Mat WMIdentify::getTvec()
+{
+  return this->tvec;
 }

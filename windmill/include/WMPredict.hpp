@@ -29,13 +29,15 @@ private:
     double F2t(double P, double fly_t, double theta_0, double v0);
     double ThetaToolForBig(double dt, double t0);
     // debug - 画图
-    cv::Point2d CalPointGuess(double theta);
+    cv::Point3f CalPointGuess(double theta, GlobalParam gp);
     cv::Mat debugImg;
     cv::Mat data_img;
     cv::Mat smoothData_img;
     cv::Point2d R_center;
     std::deque<double> y_data_s;
     std::deque<double> x_data_s;
+    cv::Mat rvec;                          // 旋转向量
+    cv::Mat tvec;                          // 平移向量 
     
     int direction;
     double Radius;    //能量机关半径，修正角度用
@@ -55,7 +57,7 @@ public:
 
     void thetaAmend(double &theta);
     int BulletSpeedProcess(Translator &translator,GlobalParam &gp);
-    void UpdateData(double direction, double Radius,cv::Point2d R_center,cv::Mat  debugImg,cv::Mat data_img,Translator translator);
+    void UpdateData(WMIdentify &WMI,Translator translator);
     int Fit(std::deque<double> time_list, std::deque<double> angle_velocity_list, GlobalParam &gp, Translator &tr);
     void NewtonDspSmall(double theta_0, double alpha, Translator &translator, GlobalParam &gp, double R_yaw);
     void NewtonDspBig(double theta_0, double alpha, Translator &translator, GlobalParam &gp, double R_yaw);

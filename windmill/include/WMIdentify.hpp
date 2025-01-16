@@ -53,7 +53,7 @@ private:
               // 识别R的时候当前的状态，0为没有识别到R，1为识别到R，2为识别到多个R
   int list_stat;
   bool pnp_solved = false;               // 标记是否已经求解pnp
-  bool ready_to_update = false;          // 标记是否可以更新
+  bool ready_to_update = true;          // 标记是否可以更新
   cv::Mat camera_matrix;                 // 相机内参矩阵
   cv::Mat dist_coeffs;                   // 畸变系数
   cv::Mat rvec;                          // 旋转向量
@@ -171,8 +171,10 @@ public:
                       cv::Mat tvec);
   double calculatePhi(cv::Mat rotation_matrix, cv::Mat tvec);
   double calculateAlpha(cv::Mat rotation_matrix, cv::Mat tvec);
-  bool update_R_list();
+  bool update_R_and_blade_tip_list(cv::Point2f center, cv::Point2f blade_tip);
   double calculateDistanceSquare(cv::Point2f p1, cv::Point2f p2);
+  cv::Mat getRvec();
+  cv::Mat getTvec();
 };
 
 #endif // __WMIDENTIFY_HPP

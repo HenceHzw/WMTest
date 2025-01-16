@@ -69,7 +69,7 @@ const string WINDOW_NAME = "Parameter Controls";
 int circularityThreshold = 50; // 圆度阈值
 
 bool useChannelMinus = true; // 是否使用通道减法提取红色（建议开启，光线干扰小，效果稳定调参简单）
-bool useTrackbars = false; // 是否使用滑动条动态调参
+bool useTrackbars = true; // 是否使用滑动条动态调参
 bool debug = false;        // debug模式  //输出识别圆个数
 int lowH1 = 0;            // 第一个红色范围的低阈值
 int highH1 = 65;          // 第一个红色范围的高阈值
@@ -81,9 +81,9 @@ int highS = 255; // 饱和度上限
 int lowV = 50;   // 亮度下限
 int highV = 255; // 亮度上限
 
-int dilationSize = 9;     // 膨胀核大小
+int dilationSize = 11;     // 膨胀核大小
 int erosionSize = 3;      // 腐蚀核大小
-int thresholdValue = 109; // 二值化阈值
+int thresholdValue = 35; // 二值化阈值
 
 int rect_area_threshold = 500;   // 矩形面积阈值
 int circle_area_threshold = 200; // 类圆轮廓面积阈值
@@ -272,7 +272,7 @@ KeyPoints detect_key_points(const vector<vector<Point>> &contours,
         result.rectCenter = Point(m.m10 / m.m00, m.m01 / m.m00);
 
         // 绘制质心
-        circle(processedImage, result.rectCenter, 3, Scalar(0, 255, 0), -1);
+        circle(processedImage, result.rectCenter, 3, Scalar(0, 255, 0), -1);     //流水灯中心
       }
     }
 
@@ -358,7 +358,7 @@ DetectionResult detect(const cv::Mat &inputImage, bool useEquationMethod,
 
   // 交点计算
   if (keyPoints.circleContours.size() >= 2) {
-    blade.apex.push_back(keyPoints.circlePoints[indices[1]]);
+    blade.apex.push_back(keyPoints.circlePoints[indices[1]]);    //放进R点
     blade.apex.push_back(keyPoints.circlePoints[indices[0]]);
     Moments m1 = moments(keyPoints.circleContours[indices[0]]);
     // 拟合椭圆轮廓
@@ -501,7 +501,7 @@ vector<Point> findIntersectionsByEquation(const Point &center1,
       intersections.emplace_back(pt2);
       blade.apex.push_back(pt2);
     }
-    circle(pic, intersections[0], 3, Scalar(0, 255, 0), -1);
+    circle(pic, intersections[0], 3, Scalar(0, 255, 0), -1);    //扇叶顶端点
 
     if (drawPoints) {
 
@@ -551,7 +551,7 @@ vector<Point> findIntersectionsByEquation(const Point &center1,
 
       intersections.emplace_back(pt3);
       intersections.emplace_back(pt4);
-      circle(pic, pt3, 3, Scalar(0, 255, 0), -1);
+      circle(pic, pt3, 3, Scalar(0, 255, 0), -1);   //扇叶三号点
       circle(pic, pt4, 3, Scalar(0, 255, 0), -1);
       // 排序左右两个关键点的算法
       Point O = blade.apex[0]; // 获取O点

@@ -273,6 +273,7 @@ void *OperationFunction(void *arg) {
         std::cout << "WM indentity failed" << std::endl;
         // cout << " FAILED ! " << endl;
       }
+      // MManager.write(translator, *serialPort);
 
 #ifdef DEBUGMODE
       // 如果开启DEBUGMODE，使用UI类在图片上绘制UI
