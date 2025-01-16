@@ -67,7 +67,7 @@
     add_subdirectory(serialPort)
     add_subdirectory(windmill)
     add_subdirectory(armor)
-    add_executable(infantry_new main.cpp)
+    add_executable(infantry_new Test_SerialPort.cpp)
     target_link_libraries(infantry_new
         params
         camera
