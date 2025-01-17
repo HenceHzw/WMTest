@@ -75,6 +75,8 @@ private:
   std::deque<double> phi_list;
   std::deque<double> alpha_list;
   uint32_t FanChangeTime;
+  
+  cv::Mat last_rotation_matrix; // 存储上一帧的旋转矩阵
   // WMDetector detector;
 
 public:
@@ -173,8 +175,12 @@ public:
   double calculateAlpha(cv::Mat rotation_matrix, cv::Mat tvec);
   bool update_R_and_blade_tip_list(cv::Point2f center, cv::Point2f blade_tip);
   double calculateDistanceSquare(cv::Point2f p1, cv::Point2f p2);
-  cv::Mat getRvec();
+
+
+  cv::Mat getRvec();              //这四个都服务于Predict的CalPointGuess函数
   cv::Mat getTvec();
+  cv::Mat getCamera_matrix();
+  cv::Mat getDist_coeffs();
 };
 
 #endif // __WMIDENTIFY_HPP

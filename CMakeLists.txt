@@ -32,7 +32,7 @@
     # add_definitions(-DDEBUGCOLOR)
     # add_definitions(-DDEBUGNUM)
     # add_definitions(-DVIRTUALGRAB)  # 打开虚拟取流 即用视频跑
-    add_definitions(-DNOPORT)    
+    add_definitions(-DNOPORT)
     # add_definitions(-DUSETRIGGERMODE)
     # add_definitions(-DTHREADANALYSIS)
     # 使用UI动态调参
@@ -67,7 +67,7 @@
     add_subdirectory(serialPort)
     add_subdirectory(windmill)
     add_subdirectory(armor)
-    add_executable(infantry_new Test_SerialPort.cpp)
+    add_executable(infantry_new main.cpp)
     target_link_libraries(infantry_new
         params
         camera

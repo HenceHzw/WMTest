@@ -95,8 +95,7 @@ void *ReadFunction(void *arg) // 读线程
   SerialPort *serialPort = (SerialPort *)arg;
   while (1) {
     pthread_mutex_lock(&Mutex);
-    // usleep(1000);
-    // printf("read thread is running %d %d\n", ++cnt, current_buffer);
+    
     MManager.read(buffers[current_buffer].translator, *serialPort);
     if (buffers[current_buffer].translator.message.status % 5 != 0) {
 

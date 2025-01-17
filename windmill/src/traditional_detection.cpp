@@ -83,7 +83,7 @@ int highV = 255; // 亮度上限
 
 int dilationSize = 11;     // 膨胀核大小
 int erosionSize = 3;      // 腐蚀核大小
-int thresholdValue = 35; // 二值化阈值
+int thresholdValue = 13; // 二值化阈值
 
 int rect_area_threshold = 500;   // 矩形面积阈值
 int circle_area_threshold = 200; // 类圆轮廓面积阈值

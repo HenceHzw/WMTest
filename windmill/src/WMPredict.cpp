@@ -76,19 +76,21 @@ int WMIPredict::StartPredict(Translator &translator, GlobalParam &gp, WMIdentify
     this->UpdateData(WMI, translator); 
 
     // 如果击打大符
-    if (translator.message.status % 5 == 3)
+    // if (translator.message.status % 5 == 3)
+    if(1)
     {
         // 如果角速度数据数量够，进行拟合
 
         if (WMI.getAngleVelocityList().size() >= gp.list_size)
         {
+
             this->ConvexOptimization(WMI.getTimeList(), WMI.getAngleVelocityList(), gp, translator);
         }
 
         // 否则进入下一次循环，积累数据
         else
         {
-            LOG_IF(INFO, gp.switch_INFO) << "数据不够，不拟合 " << WMI.getAngleVelocityList().size();
+            LOG_IF(INFO, gp.switch_INFO) << "数据不够，不拟合 getAngleVelocityList().size() : " << WMI.getAngleVelocityList().size();
             return 0;
         }
         this->NewtonDspBig(WMI.getAngleList(), WMI.getAlpha(), translator, gp, WMI.getPhi());
@@ -117,15 +119,12 @@ void WMIPredict::UpdateData(WMIdentify &WMI, Translator translator)
     this->w = abs(direction) > 20 ? 1.047197551 : 0; // 小符角速度
     // this->w = 0;
     this->direction = WMI.getDirection() > 0 ? 1 : -1;
-    // if(1) //这两个参数只是为了直观显示预测打击点位置用的
-    // {
-    //     this->R_center = WMI.getR_center();
-    //     this->Radius = WMI.getRadius();
-    // }
 
     this->rvec = WMI.getRvec();
     this->tvec = WMI.getTvec();
-
+    this->dist_coeffs = WMI.getDist_coeffs();
+    this->camera_matrix = WMI.getCamera_matrix();
+    
     this->now_time = (double)translator.message.predict_time / 1000;
     this->debugImg = WMI.getImg0();
     this->data_img = WMI.getData_img();
@@ -200,8 +199,8 @@ void WMIPredict::NewtonDspBig(double theta_0, double alpha, Translator &translat
     this->Fire_time = this->now_time + delta_t;
     theta_0 += theta_0 < 0 ? 2 * pi : 0;
     theta_0 -= theta_0 > 2 * pi ? 2 * pi : 0;
-    std::cout << "theta:" << theta_0 << std::endl;
-    std::cout << "w_big:" << w_big << std::endl;
+    // std::cout << "theta:" << theta_0 << std::endl;
+    // std::cout << "w_big:" << w_big << std::endl;
     double v0 = translator.message.bullet_v; // 弹速
     cv::Mat P_t = cv::Mat::zeros(2, 1, CV_64F);
     cv::Mat temp = (cv::Mat_<double>(2, 2) << this->F1P(P0, fly_t0, theta_0, v0), this->F1t(P0, fly_t0, theta_0, v0, alpha), this->F2P(P0, fly_t0, theta_0, v0), this->F2t(P0, fly_t0, theta_0, v0));
@@ -230,7 +229,7 @@ void WMIPredict::NewtonDspBig(double theta_0, double alpha, Translator &translat
 
     translator.message.x_a = translator.message.yaw;
     translator.message.pitch = P0 * 180 / pi;
-    std::cout << fly_t0 << std::endl;
+    // std::cout << fly_t0 << std::endl;
     translator.message.yaw = (yaw + R_yaw) * 180 / pi;
     translator.message.yaw += yaw_fix;
 
@@ -436,29 +435,21 @@ double WMIPredict::ThetaToolForBig(double dt, double t0) // 计算t0->t0+dt的�
 {
     return this->direction * (this->b * dt + this->A0 / this->w_big * (cos(this->w_big * t0 + this->fai) - cos(this->w_big * (t0 + dt) + this->fai)));
 }
-cv::Point3f WMIPredict::CalPointGuess(double theta, GlobalParam gp)    // 似乎没什么用 
+cv::Point2f WMIPredict::CalPointGuess(double theta)    // 似乎没什么用 
 {
-    // // 注意opencv坐标系
-    cv::Point3f point_guess(r * cos(theta), - r * sin((theta)), 0);
-    // cv::Mat rotation_matrix;
-    // cv::Rodrigues(this->rvec, rotation_matrix);
-    // cv::Mat camera_matrix = gp.camera_matrix;
-    // cv::Mat dist_coeffs = gp.dist_coeffs;
-    
+    std::vector<cv::Point3f> objectPoints ={cv::Point3f(r * cos(theta), - r * sin((theta)), 0)};
 
+     // 投影二维点 
+    std::vector<cv::Point2f> imagePoints;
+    cv::projectPoints(objectPoints, this->rvec, this->tvec, this->camera_matrix, this->dist_coeffs, imagePoints);
+    cv::Point2f point_guess = imagePoints[0];
 
-
-
-    // cv::Mat PointGuessFrame = GetDebugImg();
-    // cv::circle(PointGuessFrame, point_guess, 5, cv::Scalar(0, 0, 255), -1);
-    // cv::imshow("PointGuessFrame", PointGuessFrame);
-
-
-
-
+    cv::circle(this->debugImg, point_guess, 5, cv::Scalar(0,0,255), -1);
+    cv::imshow("CalPointGuess", this->debugImg);
 
     return point_guess;
 }
+
 
 double WMIPredict::f1(double P0, double fly_t0, double theta_0, double v0, double alpha)
 {

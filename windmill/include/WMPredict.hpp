@@ -29,7 +29,7 @@ private:
     double F2t(double P, double fly_t, double theta_0, double v0);
     double ThetaToolForBig(double dt, double t0);
     // debug - 画图
-    cv::Point3f CalPointGuess(double theta, GlobalParam gp);
+    cv::Point2f CalPointGuess(double theta);
     cv::Mat debugImg;
     cv::Mat data_img;
     cv::Mat smoothData_img;
@@ -38,6 +38,8 @@ private:
     std::deque<double> x_data_s;
     cv::Mat rvec;                          // 旋转向量
     cv::Mat tvec;                          // 平移向量 
+    cv::Mat camera_matrix;                 // 相机内参矩阵  
+    cv::Mat dist_coeffs;                   // 畸变系数
     
     int direction;
     double Radius;    //能量机关半径，修正角度用

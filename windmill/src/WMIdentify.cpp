@@ -57,6 +57,10 @@ WMIdentify::WMIdentify(GlobalParam &gp) {
   this->camera_matrix = this->gp->camera_matrix;
   this->dist_coeffs = this->gp->dist_coeffs;
   this->data_img = cv::Mat::zeros(400, 800, CV_8UC3);
+  world_points = {cv::Point3f(this->gp->d_RP2, 0, 0),
+                  cv::Point3f(this->gp->d_Radius, this->gp->d_P1P3 / 2, 0),
+                  cv::Point3f(this->gp->d_Radius, -this->gp->d_P1P3 / 2, 0),
+                  cv::Point3f(this->gp->d_Radius / 2, 0, 0)};
   // 输出日志，初始化成功
   // LOG_IF(INFO, this->switch_INFO) << "WMIdentify Successful";
 }
@@ -142,109 +146,82 @@ void WMIdentify::identifyWM(cv::Mat &input_img, Translator &ts) {
 
   WMBlade blade;
   DetectionResult result;
-  result = detect(this->img, true, true, blade);
+  result = detect(this->img, true, false, blade);
   // cv::imshow("Processed Image", result.processedImage);
   cv::waitKey(1);
 
+  std::cout<< "                                            " <<std::endl;
+  // LOG_IF(INFO, this->switch_INFO) << "                                                   blade.apex.size() :" << blade.apex.size();
+
   if (blade.apex.size() == 6) {
 
-    // 如果当前为识别到有效扇叶的第一帧（未PnP，检测到五个关键点）,进行PnP解算
-    if (!pnp_solved) {
-      // 构建世界坐标系中的点
-      world_points.clear();
-      // world_points.emplace_back(0, 0, 0.04); // R点作为原点
+    // 图像坐标系中的点
+    image_points.clear();
+    image_points.push_back(blade.apex[2]);
+    image_points.push_back(blade.apex[3]);
+    image_points.push_back(blade.apex[4]);
+    image_points.push_back(blade.apex[5]);
 
-      // R->P2为x轴正向
-      // world_points.emplace_back(this->gp->d_Radius, 0, 0);
-      world_points.emplace_back(this->gp->d_RP2, 0, 0); // P2点
-      world_points.emplace_back(this->gp->d_Radius, this->gp->d_P1P3 / 2,
-                                0); // P1点
-      world_points.emplace_back(this->gp->d_Radius, -this->gp->d_P1P3 / 2,
-                                0); // P3点
-      world_points.emplace_back(this->gp->d_Radius / 2, 0, 0);
-      // 图像坐标系中的点
-      image_points.clear();
-      // image_points.push_back(blade.apex[0]);
-      // image_points.push_back(blade.apex[1]);
-      image_points.push_back(blade.apex[2]);
-      image_points.push_back(blade.apex[3]);
-      image_points.push_back(blade.apex[4]);
-      image_points.push_back(blade.apex[5]);
-      // 进行PnP解算获取旋转矩阵
-      cv::solvePnP(world_points, image_points, camera_matrix, dist_coeffs, rvec,
-                   tvec);
+    // 进行PnP解算获取旋转矩阵
+    cv::solvePnP(world_points, image_points, camera_matrix, dist_coeffs, rvec,
+                 tvec);
 
-      cv::Rodrigues(rvec, rotation_matrix);
-      // 标记为已解算，后续不再重复PnP解算（固定世界坐标系，收集角度）
-      pnp_solved = true;
+    cv::Rodrigues(rvec, rotation_matrix);
+
+    // 计算相对于上一帧的旋转角度
+    if (!last_rotation_matrix.empty()) {
+      cv::Mat R_w1_to_w2 = rotation_matrix.t() * last_rotation_matrix;
+
+      // 提取绕z轴的旋转分量，作为delta theta帧间旋转角度
+      double dtheta =
+          atan2(R_w1_to_w2.at<double>(1, 0), R_w1_to_w2.at<double>(0, 0));
+      dtheta = dtheta * 180 / CV_PI;
+      if (fabs(dtheta) > 30) {
+        // 此处添加扇叶切换的跳变处理逻辑
+        // 如果dtheta大于30度，则认为发生了扇叶切换
+        // 将angle_list清空，并重新开始收集角度
+        // 将angle_velocity_list清空
+      }
+
+      // 累加角度
+      this->angle -= dtheta;
+      LOG_IF(INFO, this->switch_INFO) << "angle_list.size()  = " << angle_list.size();
+      LOG_IF(INFO, this->switch_INFO) << "angle: " << this->angle;
     }
+
+    // 保存当前旋转矩阵作为下一帧的last_rotation_matrix
+    last_rotation_matrix = rotation_matrix.clone();
+
+    // cv::circle(result.processedImage, blade.apex[1], 5, cv::Scalar(0, 0,
+    // 255),
+    //            -1);
+
+    this->ready_to_update = true;
+    if (angle_list.size() >= gp->list_size - 2) {
+      // 如果角度收集达到阈值，那么需要开始预测了，要给Predict发alpha和phi角度，以及距离s
+
+      this->phi =
+          this->calculatePhi(rotation_matrix, tvec);
+      this->alpha =
+          this->calculateAlpha(rotation_matrix, tvec);
+      this->s = sqrt(cv::norm(tvec) * cv::norm(tvec) -
+                     this->gp->H_0 * this->gp->H_0);
+      LOG_IF(INFO, this->switch_INFO) <<"phi = "<< phi *180/CV_PI;
+      LOG_IF(INFO, this->switch_INFO) <<"alpha = "<< alpha *180/CV_PI;
+
+      this->list_stat = 1;
+    } else {
+      // 如果角度收集未达到阈值，则不执行updateList
+      // LOG_IF(ERROR, this->switch_ERROR)
+      //     << "didn't execute updateList, lack data";
+    }
+    this->updateList((double)ts.message.predict_time / 1000);
+
+    // cv::imshow("Processed Image", result.processedImage);
+    // this->updateList((double)ts.message.predict_time / 1000);
+
     // 如果已经解算过（有固定世界系了）
     // 那么收集角度
-    if (pnp_solved) {
-       image_points.clear();
-      // image_points.push_back(blade.apex[0]);     // blade.apex[0] ： R点
-      // image_points.push_back(blade.apex[1]);
-      image_points.push_back(blade.apex[2]);
-      image_points.push_back(blade.apex[3]);
-      image_points.push_back(blade.apex[4]);
-      image_points.push_back(blade.apex[5]);
-      // 进行PnP解算获取旋转矩阵
-      cv::solvePnP(world_points, image_points, camera_matrix, dist_coeffs, rvec, tvec);
-
-      cv::Rodrigues(rvec, rotation_matrix);
-      // cv::Mat R_init = cv::Mat::eye(3, 3, CV_64F);   // 初始化为单位矩阵
-      // cv::Mat t_init = cv::Mat::zeros(3, 1, CV_64F); // 初始化为零向量
-      // cv::Rodrigues(rvec, R_init);
-      // t_init = tvec.clone();
-      this->calculateAngle(blade.apex[1], rotation_matrix, tvec);
-
-      // this->update_R_and_blade_tip_list(blade.apex[0], blade.apex[1]);   // 只是用于打击点预测直观显示，对应于WMIPredict.cpp里面的Updatedate，以及CalPointGuess()函数的调用
-
-      // cv::circle(result.processedImage, blade.apex[1], 5, cv::Scalar(255, 255, 255), -1);  //blade.apex[1]:圆的中心点
-      // cv::imshow("Test Image", result.processedImage);
-      if (angle_list.size() >= gp->list_size - 2) {
-        // 如果角度收集达到阈值，那么需要开始预测了，要给Predict发alpha和phi角度，以及距离s
-        // 以扇叶方向为x轴建立随动世界系，做PnP算两个角度和距离
-
-        // 图像坐标系中的点（世界系下的点是相对固定的，所以不必重新构建world_points了）
-        image_points.clear();
-        // image_points.push_back(blade.apex[0]);
-        // image_points.push_back(blade.apex[1]);
-        image_points.push_back(blade.apex[2]);
-        image_points.push_back(blade.apex[3]);
-        image_points.push_back(blade.apex[4]);
-        image_points.push_back(blade.apex[5]);
-
-        // 进行PnP解算获取旋转矩阵
-        cv::solvePnP(world_points, image_points, camera_matrix, dist_coeffs,
-                     rvec_for_predict, tvec_for_predict);
-
-        cv::Rodrigues(rvec_for_predict, rotation_matrix_for_predict);
-
-        this->phi =
-            this->calculatePhi(rotation_matrix_for_predict, tvec_for_predict);
-        this->alpha =
-            this->calculateAlpha(rotation_matrix_for_predict, tvec_for_predict);
-        this->s = sqrt(cv::norm(tvec_for_predict) * cv::norm(tvec_for_predict) -
-                       this->gp->H_0 * this->gp->H_0);
-        LOG_IF(INFO, this->switch_INFO) <<"phi = "<<phi;
-        LOG_IF(INFO, this->switch_INFO) <<"alpha = "<<alpha * 180/CV_PI;
-
-        this->list_stat = 1;
-      } else {
-
-        // 如果角度收集未达到阈值，则不执行updateList
-        // LOG_IF(ERROR, this->switch_ERROR)
-        //     << "didn't execute updateList, lack data";
-      }
-      this->updateList((double)ts.message.predict_time / 1000);
-    } 
-    else {
-      // 如果未解算过PnP，则不执行updateList
-      // LOG_IF(ERROR, this->switch_ERROR)
-      //     << "The PnP coordinate system has not been established yet, "
-      //        "skipping this frame.";
-    }
   }
 }
 
@@ -311,8 +288,8 @@ void WMIdentify::calculateAngle(cv::Point2f blade_tip, cv::Mat rotation_matrix,
   // std::cout << "gp->gap % gp->gap_control : " << gp->gap % gp->gap_control << std::endl;
 
   // std::cout << "angle_list.size() : " << this->angle_list.size() << std::endl;
-  LOG_IF(INFO, this->switch_INFO) << "angle: " << this->angle;
-  LOG_IF(INFO, this->switch_INFO) << "length: " << sqrt(X * X + Y * Y);
+  // LOG_IF(INFO, this->switch_INFO) << "angle: " << this->angle;
+  // LOG_IF(INFO, this->switch_INFO) << "length: " << sqrt(X * X + Y * Y);
 
   // std::cout << "length: " << sqrt(X * X + Y * Y) << std::endl;
 
@@ -329,14 +306,16 @@ double WMIdentify::calculatePhi(cv::Mat rotation_matrix, cv::Mat tvec) {
   cv::Mat camera_in_world = -rotation_matrix.t() * tvec;
   // 相机z轴在世界坐标系中的向量
   cv::Mat Z_camera_in_world = rotation_matrix.t().col(2);
+  // cv::Mat Z_camera_in_camera = (cv::Mat_<double>(3,1) << 0,0,1);
+  // cv::Mat Z_camera_in_world = rotation_matrix.t() * (Z_camera_in_camera - tvec);
   double Vx = camera_in_world.at<double>(0, 0);
   double Vz = camera_in_world.at<double>(2, 0);
   double Zx = Z_camera_in_world.at<double>(0, 0);
   double Zz = Z_camera_in_world.at<double>(2, 0);
   // phi的值为二者点积除以二者模的乘积
   double phi = acos(
-      Vx * Zx + Vz * Zz / (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz)));
-  LOG_IF(INFO, this->switch_INFO) <<"(sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz)) = "<< (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz));
+      (Vx * Zx + Vz * Zz)/ (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz)));
+  // LOG_IF(INFO, this->switch_INFO) <<"Vx * Zx + Vz * Zz / (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz)) = "<< Vx * Zx + Vz * Zz / (sqrt(Vx * Vx + Vz * Vz) * sqrt(Zx * Zx + Zz * Zz));
   return phi;
 }
 /**
@@ -710,9 +689,11 @@ void WMIdentify::updateList(double time) {
   if (this->angle_list.size() >= this->gp->list_size &&
       gp->gap % gp->gap_control == 0) {
       this->angle_list.pop_front();
+      // LOG_IF(INFO, gp->switch_INFO) << "完成 angle_list pop_front";
   }
   if (ready_to_update && gp->gap % gp->gap_control == 0) {
     this->angle_list.push_back(angle);
+    // LOG_IF(INFO, gp->switch_INFO) << "完成 angle_list push_back" <<"        angle_list.size() : "<<angle_list.size() ;
   }
   // 更新phi队列
   if (this->phi_list.size() >= this->gp->list_size) {
@@ -730,7 +711,7 @@ void WMIdentify::updateList(double time) {
   }
 
   // 更新角速度队列
-  if (this->angle_velocity_list.size() >= this->gp->list_size &&
+  if (this->angle_velocity_list.size() > this->gp->list_size &&
       gp->gap % gp->gap_control == 0) {
     this->angle_velocity_list.pop_front();
   }
@@ -745,14 +726,14 @@ void WMIdentify::updateList(double time) {
     double dtime = (this->time_list[this->time_list.size() - 1] -
                     this->time_list[this->time_list.size() - 2]);
     // 更新角速度队列,简单检验一下数据，获得扇叶切换时间
-    if (abs(dangle / dtime) > 5) {
-      this->FanChangeTime = time_list.back() * 1000;
-      this->time_list.pop_front();
-      this->angle_list.pop_front();
-      gp->gap--;
-    } else {
+    // if (abs(dangle / dtime) > 5) {
+    //   this->FanChangeTime = time_list.back() * 1000;
+    //   this->time_list.pop_front();
+    //   this->angle_list.pop_front();
+    //   gp->gap--;
+    // } else {
       this->angle_velocity_list.emplace_back(dangle / dtime);
-    }
+    // }
 
     // 更新旋转方向
     // std::cout<<this->time_list.back()<<std::endl;
@@ -885,4 +866,14 @@ cv::Mat WMIdentify::getRvec()
 cv::Mat WMIdentify::getTvec()
 {
   return this->tvec;
+}
+
+cv::Mat WMIdentify::getCamera_matrix()
+{
+  return this->camera_matrix;
+}
+
+cv::Mat WMIdentify::getDist_coeffs()
+{
+  return this->dist_coeffs;
 }

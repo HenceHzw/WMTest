@@ -270,7 +270,7 @@ void *OperationFunction(void *arg) {
 
       if (!WMIPRE.StartPredict(translator, gp, WMI)) {
         translator.message.status = 102;
-        std::cout << "WM indentity failed" << std::endl;
+        // std::cout << "WM indentity failed" << std::endl;
         // cout << " FAILED ! " << endl;
       }
       // MManager.write(translator, *serialPort);
